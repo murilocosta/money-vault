@@ -1,0 +1,214 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "./generated"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─────────────────────────────────────────────
+// Enums
+// ─────────────────────────────────────────────
+
+enum AccountType {
+  CHECKING
+  SAVINGS
+  CREDIT_CARD
+  LOAN
+}
+
+enum TransactionType {
+  INCOME
+  EXPENSE
+  TRANSFER
+}
+
+enum BudgetPeriod {
+  WEEKLY
+  MONTHLY
+  CUSTOM
+}
+
+enum PayoffStrategy {
+  AVALANCHE
+  SNOWBALL
+  FIXED
+}
+
+enum PayeeType {
+  PERSON
+  BUSINESS
+  INSTITUTION
+  OTHER
+}
+
+// ─────────────────────────────────────────────
+// Account
+// ─────────────────────────────────────────────
+
+model Account {
+  id          String      @id @default(uuid())
+  name        String
+  type        AccountType
+  balance     Decimal     @db.Decimal(15, 2)
+  currency    String      @default("EUR")
+  description String?
+  isActive    Boolean     @default(true)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  transactions Transaction[]
+  debts        Debt[]
+}
+
+// ─────────────────────────────────────────────
+// Category
+// ─────────────────────────────────────────────
+
+model Category {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  color     String?
+  icon      String?
+  createdAt DateTime @default(now())
+
+  transactions Transaction[]
+  budgets      Budget[]
+}
+
+// ─────────────────────────────────────────────
+// Transaction
+// ─────────────────────────────────────────────
+
+model Transaction {
+  id          String          @id @default(uuid())
+  date        DateTime
+  amount      Decimal         @db.Decimal(15, 2)
+  type        TransactionType
+  description String
+  notes       String?
+  isImported  Boolean         @default(false)
+  importHash  String?         @unique // for duplicate detection on CSV import
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  accountId  String
+  account    Account   @relation(fields: [accountId], references: [id])
+  categoryId String?
+  category   Category? @relation(fields: [categoryId], references: [id])
+  payeeId    String?
+  payee      Payee?    @relation(fields: [payeeId], references: [id])
+}
+
+// ─────────────────────────────────────────────
+// Payee
+// ─────────────────────────────────────────────
+
+model Payee {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  type      PayeeType // PERSON, BUSINESS, INSTITUTION, OTHER
+  email     String?
+  phone     String?
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  transactions Transaction[]
+}
+
+// ─────────────────────────────────────────────
+// Budget
+// ─────────────────────────────────────────────
+
+model Budget {
+  id               String       @id @default(uuid())
+  name             String
+  amount           Decimal      @db.Decimal(15, 2)
+  period           BudgetPeriod
+  customStartDate  DateTime?    // used when period = CUSTOM
+  customEndDate    DateTime?
+  alertThreshold   Int          @default(80) // percentage (0-100)
+  isActive         Boolean      @default(true)
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id])
+}
+
+// ─────────────────────────────────────────────
+// Creditor
+// ─────────────────────────────────────────────
+
+model Creditor {
+  id          String   @id @default(uuid())
+  name        String
+  contactName String?
+  email       String?
+  phone       String?
+  address     String?
+  website     String?
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  debts Debt[]
+}
+
+// ─────────────────────────────────────────────
+// Debt
+// ─────────────────────────────────────────────
+
+model Debt {
+  id              String         @id @default(uuid())
+  name            String
+  originalAmount  Decimal        @db.Decimal(15, 2)
+  currentBalance  Decimal        @db.Decimal(15, 2)
+  interestRate    Decimal        @db.Decimal(5, 4)  // e.g. 0.0525 = 5.25%
+  minimumPayment  Decimal        @db.Decimal(15, 2)
+  dueDay          Int?           // day of month (1-31)
+  payoffStrategy  PayoffStrategy @default(FIXED)
+  startDate       DateTime
+  expectedEndDate DateTime?
+  isActive        Boolean        @default(true)
+  notes           String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  creditorId String
+  creditor   Creditor @relation(fields: [creditorId], references: [id])
+  accountId  String
+  account    Account  @relation(fields: [accountId], references: [id])
+
+  payments DebtPayment[]
+}
+
+// ─────────────────────────────────────────────
+// Debt Payment (payment history per debt)
+// ─────────────────────────────────────────────
+
+model DebtPayment {
+  id            String   @id @default(uuid())
+  paymentDate   DateTime
+  amount        Decimal  @db.Decimal(15, 2)
+  principal     Decimal  @db.Decimal(15, 2) // portion reducing balance
+  interest      Decimal  @db.Decimal(15, 2) // portion going to interest
+  balanceAfter  Decimal  @db.Decimal(15, 2)
+  notes         String?
+  createdAt     DateTime @default(now())
+
+  debtId String
+  debt   Debt   @relation(fields: [debtId], references: [id])
+}
+
+// ─────────────────────────────────────────────
+// App Settings (key-value config store)
+// ─────────────────────────────────────────────
+
+model AppSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
