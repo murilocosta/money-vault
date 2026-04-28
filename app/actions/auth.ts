@@ -3,6 +3,7 @@
 import { z } from 'zod';
 import { redirect } from 'next/navigation';
 import { createUser, getUserByEmail, verifyPassword } from '@/lib/services/user.service';
+import { createSession, deleteSession } from '@/lib/session';
 import type { ActionResult } from '@/types';
 
 const RegisterSchema = z.object({
@@ -68,5 +69,11 @@ export async function loginAction(
     return { success: false, error: 'Invalid email or password.' };
   }
 
+  await createSession(user.id, user.email);
   redirect('/dashboard');
+}
+
+export async function logoutAction() {
+  await deleteSession();
+  redirect('/login');
 }
