@@ -16,6 +16,7 @@ import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 import CategoryIcon from '@mui/icons-material/Category';
 import DashboardIcon from '@mui/icons-material/Dashboard';
 import LogoutIcon from '@mui/icons-material/Logout';
+import PeopleIcon from '@mui/icons-material/People';
 import { logoutAction } from '@/app/actions/auth';
 
 const DRAWER_WIDTH = 240;
@@ -24,6 +25,7 @@ const navItems = [
   { label: 'Dashboard', href: '/dashboard', icon: <DashboardIcon fontSize="small" /> },
   { label: 'Accounts', href: '/dashboard/accounts', icon: <AccountBalanceWalletIcon fontSize="small" /> },
   { label: 'Categories', href: '/dashboard/categories', icon: <CategoryIcon fontSize="small" /> },
+  { label: 'Payees', href: '/dashboard/payees', icon: <PeopleIcon fontSize="small" /> },
 ];
 
 export function Sidebar() {
