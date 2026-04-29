@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { createPayee, deletePayee, updatePayee } from '@/lib/services/payee.service';
+import { requireUserId } from '@/lib/dal';
 import type { ActionResult } from '@/types';
 
 const PayeeSchema = z.object({
@@ -22,6 +23,8 @@ export async function createPayeeAction(
   _prev: ActionResult,
   formData: FormData,
 ): Promise<ActionResult> {
+  const userId = await requireUserId();
+
   const parsed = PayeeSchema.safeParse({
     name: formData.get('name'),
     type: formData.get('type'),
@@ -35,7 +38,7 @@ export async function createPayeeAction(
   }
 
   const { name, type, email, phone, notes } = parsed.data;
-  await createPayee({
+  await createPayee(userId, {
     name,
     type,
     email: email || undefined,
@@ -51,6 +54,8 @@ export async function updatePayeeAction(
   _prev: ActionResult,
   formData: FormData,
 ): Promise<ActionResult> {
+  const userId = await requireUserId();
+
   const parsed = PayeeSchema.safeParse({
     name: formData.get('name'),
     type: formData.get('type'),
@@ -64,7 +69,7 @@ export async function updatePayeeAction(
   }
 
   const { name, type } = parsed.data;
-  await updatePayee(id, {
+  await updatePayee(id, userId, {
     name,
     type,
     email: nullableString(formData.get('email')),
@@ -76,7 +81,8 @@ export async function updatePayeeAction(
 }
 
 export async function deletePayeeAction(id: string): Promise<ActionResult> {
-  await deletePayee(id);
+  const userId = await requireUserId();
+  await deletePayee(id, userId);
   revalidatePath('/dashboard/payees');
   return { success: true, data: undefined };
 }

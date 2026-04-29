@@ -48,12 +48,22 @@ enum PayeeType {
 // ─────────────────────────────────────────────
 
 model User {
-  id           String   @id @default(uuid())
+  id           String        @id @default(uuid())
   name         String
-  email        String   @unique
+  email        String        @unique
   passwordHash String
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  accounts     Account[]
+  categories   Category[]
+  transactions Transaction[]
+  payees       Payee[]
+  budgets      Budget[]
+  creditors    Creditor[]
+  debts        Debt[]
+  debtPayments DebtPayment[]
+  appSettings  AppSetting[]
 }
 
 // ─────────────────────────────────────────────
@@ -71,6 +81,9 @@ model Account {
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
 
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
   transactions Transaction[]
   debts        Debt[]
 }
@@ -81,13 +94,18 @@ model Account {
 
 model Category {
   id        String   @id @default(uuid())
-  name      String   @unique
+  name      String
   color     String?
   icon      String?
   createdAt DateTime @default(now())
 
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
   transactions Transaction[]
   budgets      Budget[]
+
+  @@unique([userId, name])
 }
 
 // ─────────────────────────────────────────────
@@ -106,12 +124,16 @@ model Transaction {
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
 
+  userId     String
+  user       User      @relation(fields: [userId], references: [id])
   accountId  String
   account    Account   @relation(fields: [accountId], references: [id])
   categoryId String?
   category   Category? @relation(fields: [categoryId], references: [id])
   payeeId    String?
   payee      Payee?    @relation(fields: [payeeId], references: [id])
+
+  debtPayment DebtPayment? // one transaction can fund at most one debt payment
 }
 
 // ─────────────────────────────────────────────
@@ -119,16 +141,21 @@ model Transaction {
 // ─────────────────────────────────────────────
 
 model Payee {
-  id        String   @id @default(uuid())
-  name      String   @unique
-  type      PayeeType // PERSON, BUSINESS, INSTITUTION, OTHER
+  id        String    @id @default(uuid())
+  name      String
+  type      PayeeType
   email     String?
   phone     String?
   notes     String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
 
   transactions Transaction[]
+
+  @@unique([userId, name])
 }
 
 // ─────────────────────────────────────────────
@@ -136,17 +163,19 @@ model Payee {
 // ─────────────────────────────────────────────
 
 model Budget {
-  id               String       @id @default(uuid())
-  name             String
-  amount           Decimal      @db.Decimal(15, 2)
-  period           BudgetPeriod
-  customStartDate  DateTime?    // used when period = CUSTOM
-  customEndDate    DateTime?
-  alertThreshold   Int          @default(80) // percentage (0-100)
-  isActive         Boolean      @default(true)
-  createdAt        DateTime     @default(now())
-  updatedAt        DateTime     @updatedAt
+  id              String       @id @default(uuid())
+  name            String
+  amount          Decimal      @db.Decimal(15, 2)
+  period          BudgetPeriod
+  customStartDate DateTime? // used when period = CUSTOM
+  customEndDate   DateTime?
+  alertThreshold  Int          @default(80) // percentage (0-100)
+  isActive        Boolean      @default(true)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
 
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
   categoryId String
   category   Category @relation(fields: [categoryId], references: [id])
 }
@@ -167,6 +196,9 @@ model Creditor {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
   debts Debt[]
 }
 
@@ -179,9 +211,9 @@ model Debt {
   name            String
   originalAmount  Decimal        @db.Decimal(15, 2)
   currentBalance  Decimal        @db.Decimal(15, 2)
-  interestRate    Decimal        @db.Decimal(5, 4)  // e.g. 0.0525 = 5.25%
+  interestRate    Decimal        @db.Decimal(5, 4) // e.g. 0.0525 = 5.25%
   minimumPayment  Decimal        @db.Decimal(15, 2)
-  dueDay          Int?           // day of month (1-31)
+  dueDay          Int? // day of month (1-31)
   payoffStrategy  PayoffStrategy @default(FIXED)
   startDate       DateTime
   expectedEndDate DateTime?
@@ -190,6 +222,8 @@ model Debt {
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
   creditorId String
   creditor   Creditor @relation(fields: [creditorId], references: [id])
   accountId  String
@@ -203,17 +237,21 @@ model Debt {
 // ─────────────────────────────────────────────
 
 model DebtPayment {
-  id            String   @id @default(uuid())
-  paymentDate   DateTime
-  amount        Decimal  @db.Decimal(15, 2)
-  principal     Decimal  @db.Decimal(15, 2) // portion reducing balance
-  interest      Decimal  @db.Decimal(15, 2) // portion going to interest
-  balanceAfter  Decimal  @db.Decimal(15, 2)
-  notes         String?
-  createdAt     DateTime @default(now())
+  id           String   @id @default(uuid())
+  paymentDate  DateTime
+  amount       Decimal  @db.Decimal(15, 2)
+  principal    Decimal  @db.Decimal(15, 2) // portion reducing balance
+  interest     Decimal  @db.Decimal(15, 2) // portion going to interest
+  balanceAfter Decimal  @db.Decimal(15, 2)
+  notes        String?
+  createdAt    DateTime @default(now())
 
-  debtId String
-  debt   Debt   @relation(fields: [debtId], references: [id])
+  userId        String
+  user          User         @relation(fields: [userId], references: [id])
+  debtId        String
+  debt          Debt         @relation(fields: [debtId], references: [id])
+  transactionId String?      @unique
+  transaction   Transaction? @relation(fields: [transactionId], references: [id])
 }
 
 // ─────────────────────────────────────────────
@@ -224,4 +262,7 @@ model AppSetting {
   key       String   @id
   value     String
   updatedAt DateTime @updatedAt
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
 }

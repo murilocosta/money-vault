@@ -2,11 +2,8 @@
 
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
-import {
-  createCategory,
-  deleteCategory,
-  updateCategory,
-} from '@/lib/services/category.service';
+import { createCategory, deleteCategory, updateCategory } from '@/lib/services/category.service';
+import { requireUserId } from '@/lib/dal';
 import type { ActionResult } from '@/types';
 
 const CategorySchema = z.object({
@@ -15,8 +12,8 @@ const CategorySchema = z.object({
   icon: z.string().max(2).optional().or(z.literal('')),
 });
 
-function toOptional(val: FormDataEntryValue | null): string | undefined {
-  if (!val || val === '') return undefined;
+function nullableString(val: FormDataEntryValue | null): string | null {
+  if (!val || (val as string).trim() === '') return null;
   return val as string;
 }
 
@@ -24,6 +21,8 @@ export async function createCategoryAction(
   _prev: ActionResult,
   formData: FormData,
 ): Promise<ActionResult> {
+  const userId = await requireUserId();
+
   const parsed = CategorySchema.safeParse({
     name: formData.get('name'),
     color: formData.get('color'),
@@ -35,7 +34,7 @@ export async function createCategoryAction(
   }
 
   const { name, color, icon } = parsed.data;
-  await createCategory({ name, color: color || undefined, icon: icon || undefined });
+  await createCategory(userId, { name, color: color || undefined, icon: icon || undefined });
   revalidatePath('/dashboard/categories');
   return { success: true, data: undefined };
 }
@@ -45,6 +44,8 @@ export async function updateCategoryAction(
   _prev: ActionResult,
   formData: FormData,
 ): Promise<ActionResult> {
+  const userId = await requireUserId();
+
   const parsed = CategorySchema.safeParse({
     name: formData.get('name'),
     color: formData.get('color'),
@@ -56,17 +57,18 @@ export async function updateCategoryAction(
   }
 
   const { name, color } = parsed.data;
-  await updateCategory(id, {
+  await updateCategory(id, userId, {
     name,
     color: color || null,
-    icon: toOptional(formData.get('icon')) ?? null,
+    icon: nullableString(formData.get('icon')),
   });
   revalidatePath('/dashboard/categories');
   return { success: true, data: undefined };
 }
 
 export async function deleteCategoryAction(id: string): Promise<ActionResult> {
-  await deleteCategory(id);
+  const userId = await requireUserId();
+  await deleteCategory(id, userId);
   revalidatePath('/dashboard/categories');
   return { success: true, data: undefined };
 }

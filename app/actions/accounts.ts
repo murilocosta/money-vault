@@ -2,11 +2,8 @@
 
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
-import {
-  createAccount,
-  deleteAccount,
-  updateAccount,
-} from '@/lib/services/account.service';
+import { createAccount, deleteAccount, updateAccount } from '@/lib/services/account.service';
+import { requireUserId } from '@/lib/dal';
 import type { ActionResult } from '@/types';
 
 const AccountSchema = z.object({
@@ -21,6 +18,8 @@ export async function createAccountAction(
   _prev: ActionResult,
   formData: FormData,
 ): Promise<ActionResult> {
+  const userId = await requireUserId();
+
   const parsed = AccountSchema.safeParse({
     name: formData.get('name'),
     type: formData.get('type'),
@@ -33,7 +32,7 @@ export async function createAccountAction(
     return { success: false, error: parsed.error.issues[0].message };
   }
 
-  await createAccount(parsed.data);
+  await createAccount(userId, parsed.data);
   revalidatePath('/dashboard/accounts');
   return { success: true, data: undefined };
 }
@@ -43,6 +42,8 @@ export async function updateAccountAction(
   _prev: ActionResult,
   formData: FormData,
 ): Promise<ActionResult> {
+  const userId = await requireUserId();
+
   const parsed = AccountSchema.safeParse({
     name: formData.get('name'),
     type: formData.get('type'),
@@ -55,13 +56,14 @@ export async function updateAccountAction(
     return { success: false, error: parsed.error.issues[0].message };
   }
 
-  await updateAccount(id, parsed.data);
+  await updateAccount(id, userId, parsed.data);
   revalidatePath('/dashboard/accounts');
   return { success: true, data: undefined };
 }
 
 export async function deleteAccountAction(id: string): Promise<ActionResult> {
-  await deleteAccount(id);
+  const userId = await requireUserId();
+  await deleteAccount(id, userId);
   revalidatePath('/dashboard/accounts');
   return { success: true, data: undefined };
 }
