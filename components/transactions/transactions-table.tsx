@@ -71,11 +71,11 @@ interface Props {
 }
 
 function fmt(amount: string, currency: string) {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(Number(amount));
+  return new Intl.NumberFormat('en-GB', { style: 'currency', currency }).format(Number(amount));
 }
 
 function fmtDate(iso: string) {
-  return new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+  return new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
 export function TransactionsTable({

@@ -86,7 +86,7 @@ export function AccountsTable({ accounts }: Props) {
   }
 
   const fmt = (balance: string | number, currency: string) =>
-    new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(Number(balance));
+    new Intl.NumberFormat('en-GB', { style: 'currency', currency }).format(Number(balance));
 
   return (
     <>

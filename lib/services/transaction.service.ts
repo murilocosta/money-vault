@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/db/prisma';
-import type { TransactionType } from '@/prisma/generated';
+import type { AccountType, TransactionType } from '@/prisma/generated';
 
 export const PAGE_SIZE = 20;
 
@@ -86,4 +86,61 @@ export function updateTransaction(
 
 export function deleteTransaction(id: string, userId: string) {
   return prisma.transaction.delete({ where: { id, userId } });
+}
+
+export interface LinkingFilters {
+  accountId?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  payeeId?: string;
+}
+
+export function listTransactionsForLinking(
+  userId: string,
+  accountType: AccountType,
+  exclude: boolean, // true = exclude that type, false = only that type
+  filters: LinkingFilters = {},
+) {
+  const where = {
+    userId,
+    account: exclude
+      ? { type: { not: accountType } }
+      : { type: accountType },
+    ...(filters.accountId ? { accountId: filters.accountId } : {}),
+    ...(filters.payeeId   ? { payeeId:   filters.payeeId }   : {}),
+    ...(filters.dateFrom || filters.dateTo
+      ? {
+          date: {
+            ...(filters.dateFrom ? { gte: new Date(filters.dateFrom) } : {}),
+            ...(filters.dateTo   ? { lte: new Date(`${filters.dateTo}T23:59:59.999Z`) } : {}),
+          },
+        }
+      : {}),
+  };
+
+  return prisma.transaction.findMany({
+    where,
+    orderBy: { date: 'desc' },
+    take: 100,
+    include: {
+      account:  { select: { id: true, name: true, currency: true, type: true } },
+      category: { select: { id: true, name: true, icon: true, color: true } },
+      payee:    { select: { id: true, name: true } },
+      linkedTo: { select: { id: true } },
+    },
+  });
+}
+
+export async function linkTransactions(
+  userId: string,
+  creditCardTxId: string,
+  sourceTxId: string,
+) {
+  // The credit card tx stores linkedFromId pointing to the source tx
+  await prisma.$transaction([
+    prisma.transaction.update({
+      where: { id: creditCardTxId, userId },
+      data:  { linkedFromId: sourceTxId },
+    }),
+  ]);
 }

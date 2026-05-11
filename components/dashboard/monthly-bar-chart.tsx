@@ -73,7 +73,7 @@ export function MonthlyBarChart({ accounts, selectedAccountId, selectedYear, dat
             label: { text: currency, position: 'outer-middle' },
             tick: {
               format: (v: number) =>
-                new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 2 }).format(v),
+                new Intl.NumberFormat('en-GB', { notation: 'compact', maximumFractionDigits: 2 }).format(v),
             },
           },
         },
@@ -81,7 +81,7 @@ export function MonthlyBarChart({ accounts, selectedAccountId, selectedYear, dat
         tooltip: {
           format: {
             value: (v: number) =>
-              new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(v),
+              new Intl.NumberFormat('en-GB', { style: 'currency', currency }).format(v),
           },
         },
         legend: { position: 'bottom' },
