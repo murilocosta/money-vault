@@ -7,17 +7,32 @@ import { listPayees } from '@/lib/services/payee.service';
 import { TransactionsTable } from '@/components/transactions/transactions-table';
 
 interface Props {
-  searchParams: Promise<{ page?: string }>;
+  searchParams: Promise<{
+    page?: string;
+    dateFrom?: string;
+    dateTo?: string;
+    accountId?: string;
+    categoryId?: string;
+    payeeId?: string;
+  }>;
 }
 
 export default async function TransactionsPage({ searchParams }: Props) {
-  const { page: pageParam } = await searchParams;
+  const { page: pageParam, dateFrom, dateTo, accountId, categoryId, payeeId } = await searchParams;
   const page = Math.max(1, parseInt(pageParam ?? '1', 10) || 1);
 
   const userId = await requireUserId();
 
+  const filters = {
+    ...(dateFrom   ? { dateFrom }   : {}),
+    ...(dateTo     ? { dateTo }     : {}),
+    ...(accountId  ? { accountId }  : {}),
+    ...(categoryId ? { categoryId } : {}),
+    ...(payeeId    ? { payeeId }    : {}),
+  };
+
   const [{ items, total, pageCount }, accounts, categories, payees] = await Promise.all([
-    listTransactions(userId, page),
+    listTransactions(userId, page, filters),
     listAccounts(userId),
     listCategories(userId),
     listPayees(userId),
@@ -43,6 +58,7 @@ export default async function TransactionsPage({ searchParams }: Props) {
         accounts={accountOptions}
         categories={categoryOptions}
         payees={payeeOptions}
+        filters={filters}
       />
     </Suspense>
   );

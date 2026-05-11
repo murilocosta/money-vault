@@ -24,6 +24,7 @@ import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { TransactionFormDialog } from './transaction-form-dialog';
+import { TransactionFilters } from './transaction-filters';
 import { deleteTransactionAction } from '@/app/actions/transactions';
 
 const TYPE_CHIP: Record<string, { label: string; color: 'success' | 'error' | 'info' }> = {
@@ -50,6 +51,14 @@ interface Transaction {
   payee:    { id: string; name: string } | null;
 }
 
+interface ActiveFilters {
+  dateFrom?: string;
+  dateTo?: string;
+  accountId?: string;
+  categoryId?: string;
+  payeeId?: string;
+}
+
 interface Props {
   transactions: Transaction[];
   pageCount: number;
@@ -58,6 +67,7 @@ interface Props {
   accounts: SelectOption[];
   categories: CategoryOption[];
   payees: SelectOption[];
+  filters: ActiveFilters;
 }
 
 function fmt(amount: string, currency: string) {
@@ -76,6 +86,7 @@ export function TransactionsTable({
   accounts,
   categories,
   payees,
+  filters,
 }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -121,6 +132,13 @@ export function TransactionsTable({
           New transaction
         </Button>
       </div>
+
+      <TransactionFilters
+        accounts={accounts}
+        categories={categories}
+        payees={payees}
+        filters={filters}
+      />
 
       {transactions.length === 0 ? (
         <Box className="flex flex-col items-center justify-center py-24 gap-3 text-center">

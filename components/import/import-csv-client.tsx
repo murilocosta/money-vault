@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useState, useTransition, useMemo } from 'react';
 import {
   Alert,
   Box,
@@ -28,6 +28,7 @@ import {
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import LabelIcon from '@mui/icons-material/Label';
+import FilterListOffIcon from '@mui/icons-material/FilterListOff';
 import { readCSV } from 'danfojs';
 import type { CsvFormat, ParsedRow } from '@/lib/csv-parser';
 import { parseCsvDataFrame } from '@/lib/csv-parser';
@@ -83,13 +84,44 @@ export function ImportCsvClient({ accounts, categories }: Props) {
   const [isParsing, startParse] = useTransition();
   const [isSaving, startSave] = useTransition();
 
+  const [descFilter, setDescFilter] = useState('');
+  const [payeeFilter, setPayeeFilter] = useState('');
+
+  const uniquePayees = useMemo(
+    () => [...new Set(rows.map((r) => r.payeeName).filter(Boolean))].sort(),
+    [rows],
+  );
+
+  // visibleRows maps filtered rows back to their original index so selection and edits stay in sync
+  const visibleRows = useMemo(() => {
+    const desc = descFilter.trim().toLowerCase();
+    return rows
+      .map((r, i) => ({ row: r, idx: i }))
+      .filter(({ row }) => {
+        if (desc && !row.description.toLowerCase().includes(desc)) return false;
+        if (payeeFilter && row.payeeName !== payeeFilter) return false;
+        return true;
+      });
+  }, [rows, descFilter, payeeFilter]);
+
+  const hasFilter = descFilter.trim() !== '' || payeeFilter !== '';
+
   // ── Selection helpers ──────────────────────────────────────────────────────
 
-  const allSelected = rows.length > 0 && selected.size === rows.length;
-  const someSelected = selected.size > 0 && !allSelected;
+  const visibleIndices = useMemo(() => visibleRows.map(({ idx }) => idx), [visibleRows]);
+  const allVisibleSelected = visibleIndices.length > 0 && visibleIndices.every((i) => selected.has(i));
+  const someVisibleSelected = !allVisibleSelected && visibleIndices.some((i) => selected.has(i));
 
   function toggleAll() {
-    setSelected(allSelected ? new Set() : new Set(rows.map((_, i) => i)));
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (allVisibleSelected) {
+        visibleIndices.forEach((i) => next.delete(i));
+      } else {
+        visibleIndices.forEach((i) => next.add(i));
+      }
+      return next;
+    });
   }
 
   function toggleRow(idx: number) {
@@ -136,6 +168,8 @@ export function ImportCsvClient({ accounts, categories }: Props) {
     setParseErr(null);
     setRows([]);
     setSelected(new Set());
+    setDescFilter('');
+    setPayeeFilter('');
 
     startParse(async () => {
       try {
@@ -280,6 +314,50 @@ export function ImportCsvClient({ accounts, categories }: Props) {
             </Button>
           </div>
 
+          {/* Filter bar */}
+          <Box className="flex flex-wrap items-end gap-3 mb-3 p-4 rounded-xl border border-gray-200 bg-gray-50">
+            <TextField
+              size="small"
+              label="Search description"
+              value={descFilter}
+              onChange={(e) => setDescFilter(e.target.value)}
+              sx={{ minWidth: 220 }}
+              placeholder="Type to filter…"
+            />
+
+            <FormControl size="small" sx={{ minWidth: 200 }}>
+              <InputLabel>Payee</InputLabel>
+              <Select
+                label="Payee"
+                value={payeeFilter}
+                onChange={(e) => setPayeeFilter(e.target.value)}
+              >
+                <MenuItem value=""><em>All payees</em></MenuItem>
+                {uniquePayees.map((name) => (
+                  <MenuItem key={name} value={name}>{name}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
+            {hasFilter && (
+              <Button
+                size="small"
+                variant="outlined"
+                color="inherit"
+                startIcon={<FilterListOffIcon />}
+                onClick={() => { setDescFilter(''); setPayeeFilter(''); }}
+              >
+                Clear
+              </Button>
+            )}
+
+            {hasFilter && (
+              <Typography variant="body2" color="text.secondary" sx={{ ml: 'auto', alignSelf: 'center' }}>
+                Showing {visibleRows.length} of {rows.length}
+              </Typography>
+            )}
+          </Box>
+
           {/* Bulk-category toolbar — visible only when rows are selected */}
           <Collapse in={selected.size > 0}>
             <Paper
@@ -347,8 +425,8 @@ export function ImportCsvClient({ accounts, categories }: Props) {
                   <TableCell padding="checkbox">
                     <Checkbox
                       size="small"
-                      checked={allSelected}
-                      indeterminate={someSelected}
+                      checked={allVisibleSelected}
+                      indeterminate={someVisibleSelected}
                       onChange={toggleAll}
                     />
                   </TableCell>
@@ -361,7 +439,7 @@ export function ImportCsvClient({ accounts, categories }: Props) {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {rows.map((row, idx) => {
+                {visibleRows.map(({ row, idx }) => {
                   const isSelected = selected.has(idx);
                   const chip = TYPE_CHIP[row.type] ?? { label: row.type, color: 'info' as const };
                   return (
