@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useTransition, useMemo } from 'react';
+import { useState, useTransition, useMemo, useCallback, memo } from 'react';
 import {
   Alert,
   Box,
@@ -72,11 +72,101 @@ function CategoryChip({ cat }: { cat: CategoryOption }) {
   );
 }
 
+interface PreviewTableRowProps {
+  idx: number;
+  row: PreviewRow;
+  isSelected: boolean;
+  categories: CategoryOption[];
+  onToggle: (idx: number) => void;
+  onPayeeChange: (idx: number, value: string) => void;
+  onCategoryChange: (idx: number, value: string) => void;
+}
+
+const PreviewTableRow = memo(function PreviewTableRow({
+  idx,
+  row,
+  isSelected,
+  categories,
+  onToggle,
+  onPayeeChange,
+  onCategoryChange,
+}: PreviewTableRowProps) {
+  const chip = TYPE_CHIP[row.type] ?? { label: row.type, color: 'info' as const };
+  return (
+    <TableRow
+      hover
+      selected={isSelected}
+      onClick={() => onToggle(idx)}
+      sx={{ cursor: 'pointer' }}
+    >
+      <TableCell padding="checkbox" onClick={(e) => e.stopPropagation()}>
+        <Checkbox size="small" checked={isSelected} onChange={() => onToggle(idx)} />
+      </TableCell>
+      <TableCell>
+        <Typography variant="body2" sx={{ whiteSpace: 'nowrap' }}>
+          {fmtDate(row.date)}
+        </Typography>
+      </TableCell>
+      <TableCell sx={{ maxWidth: 220 }}>
+        <Typography
+          variant="body2"
+          sx={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+        >
+          {row.description}
+        </Typography>
+      </TableCell>
+      <TableCell>
+        <Chip label={chip.label} color={chip.color} size="small" variant="outlined" />
+      </TableCell>
+      <TableCell onClick={(e) => e.stopPropagation()} sx={{ minWidth: 160 }}>
+        <TextField
+          size="small"
+          fullWidth
+          value={row.payeeName}
+          onChange={(e) => onPayeeChange(idx, e.target.value)}
+          slotProps={{ input: { sx: { fontSize: '0.875rem' } } }}
+        />
+      </TableCell>
+      <TableCell align="right">
+        <Typography
+          variant="body2"
+          sx={{ fontWeight: 600, whiteSpace: 'nowrap' }}
+          color={row.type === 'INCOME' ? 'success.main' : row.type === 'EXPENSE' ? 'error.main' : 'text.primary'}
+        >
+          {row.type === 'EXPENSE' ? '-' : row.type === 'INCOME' ? '+' : ''}
+          {Math.abs(row.amount).toFixed(2)}
+        </Typography>
+      </TableCell>
+      <TableCell onClick={(e) => e.stopPropagation()}>
+        <FormControl size="small" fullWidth>
+          <Select
+            displayEmpty
+            value={row.categoryId ?? ''}
+            onChange={(e) => onCategoryChange(idx, e.target.value)}
+            renderValue={(val) => {
+              if (!val) return <Typography variant="body2" color="text.disabled">— none —</Typography>;
+              const cat = categories.find((c) => c.id === val);
+              return cat ? <CategoryChip cat={cat} /> : null;
+            }}
+          >
+            <MenuItem value=""><em>— none —</em></MenuItem>
+            {categories.map((cat) => (
+              <MenuItem key={cat.id} value={cat.id}>
+                <CategoryChip cat={cat} />
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+      </TableCell>
+    </TableRow>
+  );
+});
+
 export function ImportCsvClient({ accounts, categories }: Props) {
   const [format, setFormat] = useState<CsvFormat>('bank-austria');
   const [delimiter, setDelimiter] = useState(';');
   const [accountId, setAccountId] = useState(accounts[0]?.id ?? '');
-  const [rows, setRows] = useState<PreviewRow[]>([]);
+  const [rowMap, setRowMap] = useState<Map<number, PreviewRow>>(new Map());
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [bulkCatId, setBulkCatId] = useState('');
   const [parseErr, setParseErr] = useState<string | null>(null);
@@ -88,21 +178,21 @@ export function ImportCsvClient({ accounts, categories }: Props) {
   const [payeeFilter, setPayeeFilter] = useState('');
 
   const uniquePayees = useMemo(
-    () => [...new Set(rows.map((r) => r.payeeName).filter(Boolean))].sort(),
-    [rows],
+    () => [...new Set([...rowMap.values()].map((r) => r.payeeName).filter(Boolean))].sort(),
+    [rowMap],
   );
 
   // visibleRows maps filtered rows back to their original index so selection and edits stay in sync
   const visibleRows = useMemo(() => {
     const desc = descFilter.trim().toLowerCase();
-    return rows
-      .map((r, i) => ({ row: r, idx: i }))
-      .filter(({ row }) => {
-        if (desc && !row.description.toLowerCase().includes(desc)) return false;
-        if (payeeFilter && row.payeeName !== payeeFilter) return false;
-        return true;
-      });
-  }, [rows, descFilter, payeeFilter]);
+    const result: { row: PreviewRow; idx: number }[] = [];
+    rowMap.forEach((row, idx) => {
+      if (desc && !row.description.toLowerCase().includes(desc)) return;
+      if (payeeFilter && row.payeeName !== payeeFilter) return;
+      result.push({ row, idx });
+    });
+    return result;
+  }, [rowMap, descFilter, payeeFilter]);
 
   const hasFilter = descFilter.trim() !== '' || payeeFilter !== '';
 
@@ -124,48 +214,49 @@ export function ImportCsvClient({ accounts, categories }: Props) {
     });
   }
 
-  function toggleRow(idx: number) {
+  const toggleRow = useCallback((idx: number) => {
     setSelected((prev) => {
       const next = new Set(prev);
-
-      if (next.has(idx)) {
-        next.delete(idx);
-      } else {
-        next.add(idx);
-      }
-
+      if (next.has(idx)) next.delete(idx); else next.add(idx);
       return next;
     });
-  }
+  }, []);
 
   function applyBulkCategory() {
     if (selected.size === 0) return;
-    setRows((prev) =>
-      prev.map((r, i) =>
-        selected.has(i) ? { ...r, categoryId: bulkCatId || undefined } : r,
-      ),
-    );
+    setRowMap((prev) => {
+      const next = new Map(prev);
+      selected.forEach((i) => {
+        const r = next.get(i);
+        if (r) next.set(i, { ...r, categoryId: bulkCatId || undefined });
+      });
+      return next;
+    });
     setSelected(new Set());
     setBulkCatId('');
   }
 
   // ── Per-row edits ─────────────────────────────────────────────────────────
 
-  function setPayeeForRow(index: number, payeeName: string) {
-    setRows((prev) => {
-      const next = [...prev];
-      next[index] = { ...next[index], payeeName };
+  const setPayeeForRow = useCallback((index: number, payeeName: string) => {
+    setRowMap((prev) => {
+      const r = prev.get(index);
+      if (!r) return prev;
+      const next = new Map(prev);
+      next.set(index, { ...r, payeeName });
       return next;
     });
-  }
+  }, []);
 
-  function setCategoryForRow(index: number, categoryId: string) {
-    setRows((prev) => {
-      const next = [...prev];
-      next[index] = { ...next[index], categoryId: categoryId || undefined };
+  const setCategoryForRow = useCallback((index: number, categoryId: string) => {
+    setRowMap((prev) => {
+      const r = prev.get(index);
+      if (!r) return prev;
+      const next = new Map(prev);
+      next.set(index, { ...r, categoryId: categoryId || undefined });
       return next;
     });
-  }
+  }, []);
 
   // ── File parsing ───────────────────────────────────────────────────────────
 
@@ -174,7 +265,7 @@ export function ImportCsvClient({ accounts, categories }: Props) {
     if (!file) return;
 
     setParseErr(null);
-    setRows([]);
+    setRowMap(new Map());
     setSelected(new Set());
     setDescFilter('');
     setPayeeFilter('');
@@ -188,7 +279,7 @@ export function ImportCsvClient({ accounts, categories }: Props) {
           setParseErr('No valid rows could be parsed from this file. Check the format and delimiter.');
           return;
         }
-        setRows(parsed.map((r) => ({ ...r })));
+        setRowMap(new Map(parsed.map((r, i) => [i, { ...r }])));
       } catch (err) {
         setParseErr(err instanceof Error ? err.message : 'Failed to parse CSV');
       }
@@ -200,12 +291,12 @@ export function ImportCsvClient({ accounts, categories }: Props) {
   // ── Save ───────────────────────────────────────────────────────────────────
 
   function handleSave() {
-    if (!accountId || rows.length === 0) return;
+    if (!accountId || rowMap.size === 0) return;
 
     startSave(async () => {
       const payload: { accountId: string; rows: ImportRow[] } = {
         accountId,
-        rows: rows.map((r) => ({
+        rows: [...rowMap.values()].map((r) => ({
           date: r.date,
           amount: r.amount,
           type: r.type,
@@ -218,7 +309,7 @@ export function ImportCsvClient({ accounts, categories }: Props) {
       const result = await importCsvAction(payload);
       if (result.success) {
         setSnackbar({ msg: `${result.data.imported} transaction(s) imported successfully.`, severity: 'success' });
-        setRows([]);
+        setRowMap(new Map());
         setSelected(new Set());
       } else {
         setSnackbar({ msg: result.error, severity: 'error' });
@@ -242,18 +333,18 @@ export function ImportCsvClient({ accounts, categories }: Props) {
             <Select
               value={format}
               label="CSV format"
-              onChange={(e) => { 
+              onChange={(e) => {
                 const csvFormat = e.target.value as CsvFormat;
-                
+
                 if (csvFormat === 'paypal') {
                   setDelimiter(",");
                 } else {
                   setDelimiter(";");
                 }
 
-                setFormat(csvFormat); 
-                setRows([]); 
-                setSelected(new Set()); 
+                setFormat(csvFormat);
+                setRowMap(new Map());
+                setSelected(new Set());
               }}
             >
               {(Object.keys(FORMAT_LABELS) as CsvFormat[]).map((f) => (
@@ -266,7 +357,7 @@ export function ImportCsvClient({ accounts, categories }: Props) {
             size="small"
             label="Delimiter"
             value={delimiter}
-            onChange={(e) => { setDelimiter(e.target.value); setRows([]); setSelected(new Set()); }}
+            onChange={(e) => { setDelimiter(e.target.value); setRowMap(new Map()); setSelected(new Set()); }}
             maxRows={3}
             fullWidth
           />
@@ -304,12 +395,12 @@ export function ImportCsvClient({ accounts, categories }: Props) {
         </Alert>
       )}
 
-      {rows.length > 0 && (
+      {rowMap.size > 0 && (
         <>
           {/* Header bar: row count + confirm button */}
           <div className="flex items-center justify-between mb-3">
             <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-              Preview — {rows.length} row{rows.length !== 1 ? 's' : ''} parsed
+              Preview — {rowMap.size} row{rowMap.size !== 1 ? 's' : ''} parsed
             </Typography>
             <Button
               variant="contained"
@@ -361,7 +452,7 @@ export function ImportCsvClient({ accounts, categories }: Props) {
 
             {hasFilter && (
               <Typography variant="body2" color="text.secondary" sx={{ ml: 'auto', alignSelf: 'center' }}>
-                Showing {visibleRows.length} of {rows.length}
+                Showing {visibleRows.length} of {rowMap.size}
               </Typography>
             )}
           </Box>
@@ -447,79 +538,18 @@ export function ImportCsvClient({ accounts, categories }: Props) {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {visibleRows.map(({ row, idx }) => {
-                  const isSelected = selected.has(idx);
-                  const chip = TYPE_CHIP[row.type] ?? { label: row.type, color: 'info' as const };
-                  return (
-                    <TableRow
-                      key={idx}
-                      hover
-                      selected={isSelected}
-                      onClick={() => toggleRow(idx)}
-                      sx={{ cursor: 'pointer' }}
-                    >
-                      <TableCell padding="checkbox" onClick={(e) => e.stopPropagation()}>
-                        <Checkbox size="small" checked={isSelected} onChange={() => toggleRow(idx)} />
-                      </TableCell>
-                      <TableCell>
-                        <Typography variant="body2" sx={{ whiteSpace: 'nowrap' }}>
-                          {fmtDate(row.date)}
-                        </Typography>
-                      </TableCell>
-                      <TableCell sx={{ maxWidth: 220 }}>
-                        <Typography
-                          variant="body2"
-                          sx={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                        >
-                          {row.description}
-                        </Typography>
-                      </TableCell>
-                      <TableCell>
-                        <Chip label={chip.label} color={chip.color} size="small" variant="outlined" />
-                      </TableCell>
-                      <TableCell onClick={(e) => e.stopPropagation()} sx={{ minWidth: 160 }}>
-                        <TextField
-                          size="small"
-                          fullWidth
-                          value={row.payeeName}
-                          onChange={(e) => setPayeeForRow(idx, e.target.value)}
-                          slotProps={{ input: { sx: { fontSize: '0.875rem' } } }}
-                        />
-                      </TableCell>
-                      <TableCell align="right">
-                        <Typography
-                          variant="body2"
-                          sx={{ fontWeight: 600, whiteSpace: 'nowrap' }}
-                          color={row.type === 'INCOME' ? 'success.main' : row.type === 'EXPENSE' ? 'error.main' : 'text.primary'}
-                        >
-                          {row.type === 'EXPENSE' ? '-' : row.type === 'INCOME' ? '+' : ''}
-                          {Math.abs(row.amount).toFixed(2)}
-                        </Typography>
-                      </TableCell>
-                      <TableCell onClick={(e) => e.stopPropagation()}>
-                        <FormControl size="small" fullWidth>
-                          <Select
-                            displayEmpty
-                            value={row.categoryId ?? ''}
-                            onChange={(e) => setCategoryForRow(idx, e.target.value)}
-                            renderValue={(val) => {
-                              if (!val) return <Typography variant="body2" color="text.disabled">— none —</Typography>;
-                              const cat = categories.find((c) => c.id === val);
-                              return cat ? <CategoryChip cat={cat} /> : null;
-                            }}
-                          >
-                            <MenuItem value=""><em>— none —</em></MenuItem>
-                            {categories.map((cat) => (
-                              <MenuItem key={cat.id} value={cat.id}>
-                                <CategoryChip cat={cat} />
-                              </MenuItem>
-                            ))}
-                          </Select>
-                        </FormControl>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
+                {visibleRows.map(({ row, idx }) => (
+                  <PreviewTableRow
+                    key={idx}
+                    idx={idx}
+                    row={row}
+                    isSelected={selected.has(idx)}
+                    categories={categories}
+                    onToggle={toggleRow}
+                    onPayeeChange={setPayeeForRow}
+                    onCategoryChange={setCategoryForRow}
+                  />
+                ))}
               </TableBody>
             </Table>
           </TableContainer>
@@ -537,7 +567,7 @@ export function ImportCsvClient({ accounts, categories }: Props) {
         </>
       )}
 
-      {rows.length === 0 && !parseErr && (
+      {rowMap.size === 0 && !parseErr && (
         <Box className="flex flex-col items-center justify-center py-24 gap-2 text-center">
           <UploadFileIcon sx={{ fontSize: 48, color: 'text.disabled' }} />
           <Typography variant="h6" color="text.secondary">No file loaded</Typography>
