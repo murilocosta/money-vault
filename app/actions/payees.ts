@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
-import { createPayee, deletePayee, updatePayee } from '@/lib/services/payee.service';
+import { createPayee, deletePayee, mergePayees, updatePayee } from '@/lib/services/payee.service';
 import { requireUserId } from '@/lib/dal';
 import type { ActionResult } from '@/types';
 
@@ -85,4 +85,32 @@ export async function deletePayeeAction(id: string): Promise<ActionResult> {
   await deletePayee(id, userId);
   revalidatePath('/dashboard/payees');
   return { success: true, data: undefined };
+}
+
+const MergePayeesSchema = z.object({
+  sourceIds: z.array(z.string().uuid()).min(2, 'Select at least two payees to merge'),
+  name: z.string().min(1, 'Unified name is required'),
+  type: z.enum(['PERSON', 'BUSINESS', 'INSTITUTION', 'OTHER']),
+});
+
+export async function mergePayeesAction(payload: {
+  sourceIds: string[];
+  name: string;
+  type: string;
+}): Promise<ActionResult<{ mergedId: string }>> {
+  const userId = await requireUserId();
+
+  const parsed = MergePayeesSchema.safeParse(payload);
+  if (!parsed.success) {
+    return { success: false, error: parsed.error.issues[0].message };
+  }
+
+  const { sourceIds, name, type } = parsed.data;
+  const merged = await mergePayees(userId, sourceIds, { name, type });
+
+  revalidatePath('/dashboard/payees');
+  revalidatePath('/dashboard/sync-payees');
+  revalidatePath('/dashboard/transactions');
+
+  return { success: true, data: { mergedId: merged.id } };
 }

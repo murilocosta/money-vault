@@ -5,6 +5,14 @@ export function listPayees(userId: string) {
   return prisma.payee.findMany({ where: { userId }, orderBy: { name: 'asc' } });
 }
 
+export function listPayeesWithCounts(userId: string) {
+  return prisma.payee.findMany({
+    where: { userId },
+    orderBy: { name: 'asc' },
+    include: { _count: { select: { transactions: true } } },
+  });
+}
+
 export function createPayee(
   userId: string,
   data: {
@@ -34,4 +42,27 @@ export function updatePayee(
 
 export function deletePayee(id: string, userId: string) {
   return prisma.payee.delete({ where: { id, userId } });
+}
+
+export async function mergePayees(
+  userId: string,
+  sourceIds: string[],
+  unified: { name: string; type: PayeeType },
+) {
+  return prisma.$transaction(async (tx) => {
+    const merged = await tx.payee.create({
+      data: { name: unified.name, type: unified.type, userId },
+    });
+
+    await tx.transaction.updateMany({
+      where: { payeeId: { in: sourceIds }, userId },
+      data: { payeeId: merged.id },
+    });
+
+    await tx.payee.deleteMany({
+      where: { id: { in: sourceIds }, userId },
+    });
+
+    return merged;
+  });
 }
