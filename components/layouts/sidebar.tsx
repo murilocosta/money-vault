@@ -15,6 +15,7 @@ import {
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 import CategoryIcon from '@mui/icons-material/Category';
 import DashboardIcon from '@mui/icons-material/Dashboard';
+import LinkIcon from '@mui/icons-material/Link';
 import LogoutIcon from '@mui/icons-material/Logout';
 import PeopleIcon from '@mui/icons-material/People';
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
@@ -26,10 +27,11 @@ const DRAWER_WIDTH = 240;
 const navItems = [
   { label: 'Dashboard',    href: '/dashboard',              icon: <DashboardIcon fontSize="small" /> },
   { label: 'Transactions', href: '/dashboard/transactions', icon: <ReceiptLongIcon fontSize="small" /> },
+  { label: 'Link Transactions', href: '/dashboard/link-transactions', icon: <LinkIcon fontSize="small" /> },
   { label: 'Accounts',     href: '/dashboard/accounts',     icon: <AccountBalanceWalletIcon fontSize="small" /> },
   { label: 'Categories',   href: '/dashboard/categories',   icon: <CategoryIcon fontSize="small" /> },
   { label: 'Payees',       href: '/dashboard/payees',       icon: <PeopleIcon fontSize="small" /> },
-  { label: 'Import CSV',   href: '/dashboard/import',       icon: <UploadFileIcon fontSize="small" /> },
+  { label: 'Import CSV',        href: '/dashboard/import',            icon: <UploadFileIcon fontSize="small" /> },
 ];
 
 export function Sidebar() {

@@ -135,6 +135,11 @@ model Transaction {
   payee      Payee?    @relation(fields: [payeeId], references: [id])
 
   debtPayment DebtPayment? // one transaction can fund at most one debt payment
+
+  // Self-relation: credit card transaction → source transaction that generated it
+  linkedFromId String?      @unique
+  linkedFrom   Transaction? @relation("TransactionLink", fields: [linkedFromId], references: [id])
+  linkedTo     Transaction? @relation("TransactionLink")
 }
 
 // ─────────────────────────────────────────────
