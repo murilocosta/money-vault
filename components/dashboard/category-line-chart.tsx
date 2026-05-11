@@ -45,23 +45,31 @@ export function CategoryLineChart({ accounts, selectedAccountId, selectedYear, d
   const chartRef     = useRef<HTMLDivElement>(null);
   const chartInstance = useRef<import('c3').ChartAPI | null>(null);
 
-  // default: all categories selected
-  const [selectedCats, setSelectedCats] = useState<string[]>(() => data.map((d) => d.categoryId));
+  // Track which categories the user has explicitly hidden.
+  // Empty set = all visible, which is the correct default without ever syncing state to props.
+  const [excludedCats, setExcludedCats] = useState<Set<string>>(new Set());
+
+  const allCatIds    = data.map((d) => d.categoryId);
+  const selectedCats = allCatIds.filter((id) => !excludedCats.has(id));
 
   function navigate(key: string, value: string) {
     const params = new URLSearchParams(searchParams.toString());
     params.set(key, value);
+    // Reset exclusions when the data source changes so the new set is fully visible
+    setExcludedCats(new Set());
     router.push(`?${params.toString()}`);
+  }
+
+  function handleCatChange(value: string | string[]) {
+    const next = typeof value === 'string' ? value.split(',') : value;
+    setExcludedCats(new Set(allCatIds.filter((id) => !next.includes(id))));
   }
 
   useEffect(() => {
     if (!chartRef.current) return;
 
-    const visible = data.filter((d) => selectedCats.includes(d.categoryId));
-
-    const columns = visible.map((cat): [string, ...number[]] => {
-      return [cat.categoryName, ...cat.months];
-    });
+    const visible = data.filter((d) => !excludedCats.has(d.categoryId));
+    const columns = visible.map((cat): [string, ...number[]] => [cat.categoryName, ...cat.months]);
 
     const colors: Record<string, string> = {};
     visible.forEach((cat, idx) => {
@@ -114,7 +122,7 @@ export function CategoryLineChart({ accounts, selectedAccountId, selectedYear, d
       chartInstance.current?.destroy();
       chartInstance.current = null;
     };
-  }, [data, currency, selectedCats]);
+  }, [data, currency, excludedCats]);
 
   const noData = data.length === 0;
 
@@ -139,10 +147,7 @@ export function CategoryLineChart({ accounts, selectedAccountId, selectedYear, d
                 multiple
                 label="Categories"
                 value={selectedCats}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setSelectedCats(typeof val === 'string' ? val.split(',') : val);
-                }}
+                onChange={(e) => handleCatChange(e.target.value)}
                 input={<OutlinedInput label="Categories" />}
                 renderValue={(selected) => (
                   <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>

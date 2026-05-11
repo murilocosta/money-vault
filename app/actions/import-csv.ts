@@ -6,7 +6,7 @@ import { prisma } from '@/lib/db/prisma';
 import { requireUserId } from '@/lib/dal';
 import type { ActionResult } from '@/types';
 
-const BATCH_SIZE = 15;
+const BATCH_SIZE = 10;
 
 const ImportRowSchema = z.object({
   date: z.coerce.date(),
