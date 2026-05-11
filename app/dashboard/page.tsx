@@ -1,8 +1,9 @@
 import { Suspense } from 'react';
 import { Typography } from '@mui/material';
 import { requireUserId } from '@/lib/dal';
-import { listAccounts, getPrincipalAccount, getMonthlyTotals } from '@/lib/services/account.service';
+import { listAccounts, getPrincipalAccount, getMonthlyTotals, getCategoryMonthlyExpenses } from '@/lib/services/account.service';
 import { MonthlyBarChart } from '@/components/dashboard/monthly-bar-chart';
+import { CategoryLineChart } from '@/components/dashboard/category-line-chart';
 
 interface Props {
   searchParams: Promise<{ accountId?: string; year?: string }>;
@@ -24,8 +25,11 @@ export default async function DashboardPage({ searchParams }: Props) {
 
   const selectedAccount = accounts.find((a) => a.id === resolvedAccountId);
 
-  const [monthlyData] = await Promise.all([
-    resolvedAccountId ? getMonthlyTotals(userId, resolvedAccountId, resolvedYear) : Promise.resolve([]),
+  const currency = selectedAccount?.currency ?? 'EUR';
+
+  const [monthlyData, categoryData] = await Promise.all([
+    resolvedAccountId ? getMonthlyTotals(userId, resolvedAccountId, resolvedYear)            : Promise.resolve([]),
+    resolvedAccountId ? getCategoryMonthlyExpenses(userId, resolvedAccountId, resolvedYear)  : Promise.resolve([]),
   ]);
 
   return (
@@ -43,7 +47,17 @@ export default async function DashboardPage({ searchParams }: Props) {
           selectedAccountId={resolvedAccountId}
           selectedYear={resolvedYear}
           data={monthlyData}
-          currency={selectedAccount?.currency ?? 'EUR'}
+          currency={currency}
+        />
+      </Suspense>
+
+      <Suspense>
+        <CategoryLineChart
+          accounts={accountOptions}
+          selectedAccountId={resolvedAccountId}
+          selectedYear={resolvedYear}
+          data={categoryData}
+          currency={currency}
         />
       </Suspense>
     </div>

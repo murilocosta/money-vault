@@ -91,3 +91,52 @@ export async function getMonthlyTotals(
 
   return [...map.values()];
 }
+
+export interface CategoryMonthlyExpense {
+  categoryId:   string;
+  categoryName: string;
+  color:        string | null;
+  months:       number[];
+}
+
+export async function getCategoryMonthlyExpenses(
+  userId:    string,
+  accountId: string,
+  year:      number,
+): Promise<CategoryMonthlyExpense[]> {
+  const start = new Date(year, 0, 1);
+  const end   = new Date(year + 1, 0, 1);
+
+  const txs = await prisma.transaction.findMany({
+    where: {
+      userId,
+      accountId,
+      date: { gte: start, lt: end },
+      type: { in: ['EXPENSE', 'TRANSFER'] },
+    },
+    select: {
+      date:     true,
+      amount:   true,
+      category: { select: { id: true, name: true, color: true } },
+    },
+  });
+
+  // accumulate per category
+  const map = new Map<string, CategoryMonthlyExpense>();
+
+  for (const tx of txs) {
+    const catId   = tx.category?.id   ?? '__uncategorized__';
+    const catName = tx.category?.name ?? 'Uncategorized';
+    const catColor= tx.category?.color ?? null;
+
+    if (!map.has(catId)) {
+      map.set(catId, { categoryId: catId, categoryName: catName, color: catColor, months: Array(12).fill(0) });
+    }
+
+    const monthIdx = tx.date.getMonth(); // 0-based
+    map.get(catId)!.months[monthIdx] += Number(tx.amount);
+  }
+
+  // only return categories that have at least one non-zero month
+  return [...map.values()].filter((c) => c.months.some((v) => v > 0));
+}

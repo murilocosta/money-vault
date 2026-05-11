@@ -17,7 +17,7 @@ export function parseLinePaypal(line: Record<string, string>): ParsedRow | null 
   if (line["Auswirkung auf Guthaben"] === "Memo") return null;
 
   const net = parseAmount(line["Netto"]);
-  const isExpense = line["Auswirkung auf Guthaben"].toUpperCase() == "SOLL";
+  const isExpense = line["Auswirkung auf Guthaben"].toUpperCase() === "SOLL";
   const description = line["Name"] ?? line["Artikelbezeichnung"];
   
   return {
@@ -38,5 +38,6 @@ function toTimestamp(date: string, time: string, tz: string): Date {
 }
 
 function parseAmount(value: string): number {
-  return parseFloat(value.replace(/\./g, "").replace(",", "."));
+  const parsedValue = parseFloat(value.replace(/\./g, "").replace(",", "."));
+  return Math.abs(parsedValue)
 }
