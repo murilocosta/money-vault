@@ -1,4 +1,4 @@
-import { formatISO, parse  } from "date-fns";
+import { parse  } from "date-fns";
 import type { ParsedRow } from './csv-parser';
 
 type BankAustriaCategory = "SEPA" | "POS" | "ATM" | "UBERWEISUNG" | "ONLINE" | "OTHER" | "GUTSCHRIFT" | "KONTOPAKET" | "BAREINZAHLUNG";
@@ -90,7 +90,7 @@ export function parseLineBankAustria(line: Record<string, string>): ParsedRow | 
   const dateTime = parse(line["Buchungsdatum"], 'dd.MM.yyyy', new Date())
 
   return {
-    date: formatISO(dateTime),
+    date: dateTime,
     amount: amount > 0 ? amount : amount * -1,
     type: amount > 0 ? 'INCOME' : 'EXPENSE',
     description: description,
