@@ -21,8 +21,10 @@ import {
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
+import StarIcon from '@mui/icons-material/Star';
+import StarBorderIcon from '@mui/icons-material/StarBorder';
 import { AccountFormDialog } from './account-form-dialog';
-import { deleteAccountAction } from '@/app/actions/accounts';
+import { deleteAccountAction, setPrincipalAccountAction } from '@/app/actions/accounts';
 
 const TYPE_LABELS: Record<string, string> = {
   CHECKING: 'Checking',
@@ -46,6 +48,7 @@ interface Account {
   currency: string;
   description: string | null;
   isActive: boolean;
+  isPrincipal: boolean;
 }
 
 interface Props {
@@ -75,37 +78,33 @@ export function AccountsTable({ accounts }: Props) {
     });
   }
 
+  function handleSetPrincipal(id: string) {
+    startTransition(async () => {
+      const result = await setPrincipalAccountAction(id);
+      if (!result.success) setSnackbar(result.error);
+    });
+  }
+
   const fmt = (balance: string | number, currency: string) =>
-    new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(
-      Number(balance),
-    );
+    new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(Number(balance));
 
   return (
     <>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <Typography variant="h5" sx={{ fontWeight: 700 }}>
-            Accounts
-          </Typography>
+          <Typography variant="h5" sx={{ fontWeight: 700 }}>Accounts</Typography>
           <Typography variant="body2" color="text.secondary" className="mt-0.5">
             Manage your financial accounts
           </Typography>
         </div>
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={openCreate}
-          size="small"
-        >
+        <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate} size="small">
           New account
         </Button>
       </div>
 
       {accounts.length === 0 ? (
         <Box className="flex flex-col items-center justify-center py-24 gap-3 text-center">
-          <Typography variant="h6" color="text.secondary">
-            No accounts yet
-          </Typography>
+          <Typography variant="h6" color="text.secondary">No accounts yet</Typography>
           <Typography variant="body2" color="text.secondary">
             Add your first account to start tracking your finances.
           </Typography>
@@ -130,14 +129,27 @@ export function AccountsTable({ accounts }: Props) {
               {accounts.map((account) => (
                 <TableRow key={account.id} hover>
                   <TableCell>
-                    <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                      {account.name}
-                    </Typography>
-                    {account.description && (
-                      <Typography variant="caption" color="text.secondary">
-                        {account.description}
-                      </Typography>
-                    )}
+                    <div className="flex items-center gap-2">
+                      <div>
+                        <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                          {account.name}
+                        </Typography>
+                        {account.description && (
+                          <Typography variant="caption" color="text.secondary">
+                            {account.description}
+                          </Typography>
+                        )}
+                      </div>
+                      {account.isPrincipal && (
+                        <Chip
+                          icon={<StarIcon sx={{ fontSize: '0.85rem !important' }} />}
+                          label="Principal"
+                          color="warning"
+                          size="small"
+                          variant="outlined"
+                        />
+                      )}
+                    </div>
                   </TableCell>
                   <TableCell>
                     <Chip
@@ -167,6 +179,22 @@ export function AccountsTable({ accounts }: Props) {
                     />
                   </TableCell>
                   <TableCell align="right">
+                    <Tooltip title={account.isPrincipal ? 'Principal account' : 'Set as principal'}>
+                      <span>
+                        <IconButton
+                          size="small"
+                          color="warning"
+                          disabled={isPending || account.isPrincipal}
+                          onClick={() => handleSetPrincipal(account.id)}
+                        >
+                          {account.isPrincipal ? (
+                            <StarIcon fontSize="small" />
+                          ) : (
+                            <StarBorderIcon fontSize="small" />
+                          )}
+                        </IconButton>
+                      </span>
+                    </Tooltip>
                     <Tooltip title="Edit">
                       <IconButton size="small" onClick={() => openEdit(account)}>
                         <EditIcon fontSize="small" />
@@ -202,9 +230,7 @@ export function AccountsTable({ accounts }: Props) {
         onClose={() => setSnackbar(null)}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >
-        <Alert severity="error" onClose={() => setSnackbar(null)}>
-          {snackbar}
-        </Alert>
+        <Alert severity="error" onClose={() => setSnackbar(null)}>{snackbar}</Alert>
       </Snackbar>
     </>
   );

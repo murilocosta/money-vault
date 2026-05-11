@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
-import { createAccount, deleteAccount, updateAccount } from '@/lib/services/account.service';
+import { createAccount, deleteAccount, setPrincipalAccount, updateAccount } from '@/lib/services/account.service';
 import { requireUserId } from '@/lib/dal';
 import type { ActionResult } from '@/types';
 
@@ -58,6 +58,14 @@ export async function updateAccountAction(
 
   await updateAccount(id, userId, parsed.data);
   revalidatePath('/dashboard/accounts');
+  return { success: true, data: undefined };
+}
+
+export async function setPrincipalAccountAction(id: string): Promise<ActionResult> {
+  const userId = await requireUserId();
+  await setPrincipalAccount(id, userId);
+  revalidatePath('/dashboard/accounts');
+  revalidatePath('/dashboard');
   return { success: true, data: undefined };
 }
 

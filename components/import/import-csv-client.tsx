@@ -149,7 +149,15 @@ export function ImportCsvClient({ accounts, categories }: Props) {
     setBulkCatId('');
   }
 
-  // ── Per-row category ───────────────────────────────────────────────────────
+  // ── Per-row edits ─────────────────────────────────────────────────────────
+
+  function setPayeeForRow(index: number, payeeName: string) {
+    setRows((prev) => {
+      const next = [...prev];
+      next[index] = { ...next[index], payeeName };
+      return next;
+    });
+  }
 
   function setCategoryForRow(index: number, categoryId: string) {
     setRows((prev) => {
@@ -469,8 +477,14 @@ export function ImportCsvClient({ accounts, categories }: Props) {
                       <TableCell>
                         <Chip label={chip.label} color={chip.color} size="small" variant="outlined" />
                       </TableCell>
-                      <TableCell>
-                        <Typography variant="body2">{row.payeeName}</Typography>
+                      <TableCell onClick={(e) => e.stopPropagation()} sx={{ minWidth: 160 }}>
+                        <TextField
+                          size="small"
+                          fullWidth
+                          value={row.payeeName}
+                          onChange={(e) => setPayeeForRow(idx, e.target.value)}
+                          slotProps={{ input: { sx: { fontSize: '0.875rem' } } }}
+                        />
                       </TableCell>
                       <TableCell align="right">
                         <Typography

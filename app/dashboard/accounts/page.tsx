@@ -8,7 +8,8 @@ export default async function AccountsPage() {
 
   const serialized = accounts.map((a) => ({
     ...a,
-    balance: a.balance.toString(),
+    balance:     a.balance.toString(),
+    isPrincipal: a.isPrincipal,
   }));
 
   return <AccountsTable accounts={serialized} />;
