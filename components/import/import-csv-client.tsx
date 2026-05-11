@@ -5,7 +5,9 @@ import {
   Alert,
   Box,
   Button,
+  Checkbox,
   Chip,
+  Collapse,
   FormControl,
   InputLabel,
   MenuItem,
@@ -19,10 +21,13 @@ import {
   TableHead,
   TableRow,
   TextField,
+  Toolbar,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import LabelIcon from '@mui/icons-material/Label';
 import { readCSV } from 'danfojs';
 import type { CsvFormat, ParsedRow } from '@/lib/csv-parser';
 import { parseCsvDataFrame } from '@/lib/csv-parser';
@@ -51,8 +56,19 @@ const TYPE_CHIP: Record<string, { label: string; color: 'success' | 'error' | 'i
   TRANSFER: { label: 'Transfer', color: 'info' },
 };
 
-function fmtDate(iso: string) {
-  return new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+function fmtDate(iso: Date) {
+  return iso.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+function CategoryChip({ cat }: { cat: CategoryOption }) {
+  return (
+    <div className="flex items-center gap-1">
+      {cat.color && (
+        <span className="inline-block w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: cat.color }} />
+      )}
+      <span>{cat.icon ? `${cat.icon} ` : ''}{cat.name}</span>
+    </div>
+  );
 }
 
 export function ImportCsvClient({ accounts, categories }: Props) {
@@ -60,10 +76,58 @@ export function ImportCsvClient({ accounts, categories }: Props) {
   const [delimiter, setDelimiter] = useState(';');
   const [accountId, setAccountId] = useState(accounts[0]?.id ?? '');
   const [rows, setRows] = useState<PreviewRow[]>([]);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [bulkCatId, setBulkCatId] = useState('');
   const [parseErr, setParseErr] = useState<string | null>(null);
   const [snackbar, setSnackbar] = useState<{ msg: string; severity: 'success' | 'error' } | null>(null);
   const [isParsing, startParse] = useTransition();
   const [isSaving, startSave] = useTransition();
+
+  // ── Selection helpers ──────────────────────────────────────────────────────
+
+  const allSelected = rows.length > 0 && selected.size === rows.length;
+  const someSelected = selected.size > 0 && !allSelected;
+
+  function toggleAll() {
+    setSelected(allSelected ? new Set() : new Set(rows.map((_, i) => i)));
+  }
+
+  function toggleRow(idx: number) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+
+      if (next.has(idx)) {
+        next.delete(idx);
+      } else {
+        next.add(idx);
+      }
+
+      return next;
+    });
+  }
+
+  function applyBulkCategory() {
+    if (selected.size === 0) return;
+    setRows((prev) =>
+      prev.map((r, i) =>
+        selected.has(i) ? { ...r, categoryId: bulkCatId || undefined } : r,
+      ),
+    );
+    setSelected(new Set());
+    setBulkCatId('');
+  }
+
+  // ── Per-row category ───────────────────────────────────────────────────────
+
+  function setCategoryForRow(index: number, categoryId: string) {
+    setRows((prev) => {
+      const next = [...prev];
+      next[index] = { ...next[index], categoryId: categoryId || undefined };
+      return next;
+    });
+  }
+
+  // ── File parsing ───────────────────────────────────────────────────────────
 
   function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -71,11 +135,12 @@ export function ImportCsvClient({ accounts, categories }: Props) {
 
     setParseErr(null);
     setRows([]);
+    setSelected(new Set());
 
     startParse(async () => {
       try {
-        // @ts-expect-error Somehow the inherited config object was not detected
-        const df = await readCSV(file, { delimiter: delimiter, header: true });
+        // @ts-expect-error danfojs accepts File in browser but types expect string
+        const df = await readCSV(file, { delimiter, header: true });
         const parsed = parseCsvDataFrame(df, format);
         if (parsed.length === 0) {
           setParseErr('No valid rows could be parsed from this file. Check the format and delimiter.');
@@ -87,17 +152,10 @@ export function ImportCsvClient({ accounts, categories }: Props) {
       }
     });
 
-    // Reset input so the same file can be re-selected after changing options
     e.target.value = '';
   }
 
-  function setCategoryForRow(index: number, categoryId: string) {
-    setRows((prev) => {
-      const next = [...prev];
-      next[index] = { ...next[index], categoryId: categoryId || undefined };
-      return next;
-    });
-  }
+  // ── Save ───────────────────────────────────────────────────────────────────
 
   function handleSave() {
     if (!accountId || rows.length === 0) return;
@@ -119,28 +177,42 @@ export function ImportCsvClient({ accounts, categories }: Props) {
       if (result.success) {
         setSnackbar({ msg: `${result.data.imported} transaction(s) imported successfully.`, severity: 'success' });
         setRows([]);
+        setSelected(new Set());
       } else {
         setSnackbar({ msg: result.error, severity: 'error' });
       }
     });
   }
 
+  // ── Render ─────────────────────────────────────────────────────────────────
+
   return (
     <>
-      {/* ── Configuration panel ── */}
+      {/* Configuration panel */}
       <Paper variant="outlined" sx={{ borderRadius: 2, p: 3, mb: 4 }}>
         <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>
           Import settings
         </Typography>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {/* Format */}
           <FormControl size="small" fullWidth>
             <InputLabel>CSV format</InputLabel>
             <Select
               value={format}
               label="CSV format"
-              onChange={(e) => { setFormat(e.target.value as CsvFormat); setRows([]); }}
+              onChange={(e) => { 
+                const csvFormat = e.target.value as CsvFormat;
+                
+                if (csvFormat === 'paypal') {
+                  setDelimiter(",");
+                } else {
+                  setDelimiter(";");
+                }
+
+                setFormat(csvFormat); 
+                setRows([]); 
+                setSelected(new Set()); 
+              }}
             >
               {(Object.keys(FORMAT_LABELS) as CsvFormat[]).map((f) => (
                 <MenuItem key={f} value={f}>{FORMAT_LABELS[f]}</MenuItem>
@@ -148,17 +220,15 @@ export function ImportCsvClient({ accounts, categories }: Props) {
             </Select>
           </FormControl>
 
-          {/* Delimiter */}
           <TextField
             size="small"
             label="Delimiter"
             value={delimiter}
-            onChange={(e) => { setDelimiter(e.target.value); setRows([]); }}
+            onChange={(e) => { setDelimiter(e.target.value); setRows([]); setSelected(new Set()); }}
             maxRows={3}
             fullWidth
           />
 
-          {/* Account */}
           <FormControl size="small" fullWidth>
             <InputLabel>Target account</InputLabel>
             <Select
@@ -172,7 +242,6 @@ export function ImportCsvClient({ accounts, categories }: Props) {
             </Select>
           </FormControl>
 
-          {/* File picker */}
           <Button
             component="label"
             variant="outlined"
@@ -193,9 +262,9 @@ export function ImportCsvClient({ accounts, categories }: Props) {
         </Alert>
       )}
 
-      {/* ── Preview table ── */}
       {rows.length > 0 && (
         <>
+          {/* Header bar: row count + confirm button */}
           <div className="flex items-center justify-between mb-3">
             <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
               Preview — {rows.length} row{rows.length !== 1 ? 's' : ''} parsed
@@ -211,10 +280,78 @@ export function ImportCsvClient({ accounts, categories }: Props) {
             </Button>
           </div>
 
+          {/* Bulk-category toolbar — visible only when rows are selected */}
+          <Collapse in={selected.size > 0}>
+            <Paper
+              variant="outlined"
+              sx={{ borderRadius: 2, mb: 2, bgcolor: 'primary.50', borderColor: 'primary.200' }}
+            >
+              <Toolbar variant="dense" sx={{ gap: 2, flexWrap: 'wrap', py: 0.5 }}>
+                <Typography variant="body2" sx={{ fontWeight: 600, color: 'primary.main', mr: 1 }}>
+                  {selected.size} row{selected.size !== 1 ? 's' : ''} selected
+                </Typography>
+
+                <FormControl size="small" sx={{ minWidth: 200 }}>
+                  <InputLabel>Set category</InputLabel>
+                  <Select
+                    value={bulkCatId}
+                    label="Set category"
+                    onChange={(e) => setBulkCatId(e.target.value)}
+                    displayEmpty
+                    renderValue={(val) => {
+                      if (!val) return <em style={{ color: 'inherit' }}></em>;
+                      const cat = categories.find((c) => c.id === val);
+                      return cat ? <CategoryChip cat={cat} /> : null;
+                    }}
+                  >
+                    <MenuItem value=""></MenuItem>
+                    {categories.map((cat) => (
+                      <MenuItem key={cat.id} value={cat.id}>
+                        <CategoryChip cat={cat} />
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+
+                <Tooltip title="Apply category to selected rows">
+                  <span>
+                    <Button
+                      size="small"
+                      variant="contained"
+                      startIcon={<LabelIcon />}
+                      onClick={applyBulkCategory}
+                    >
+                      Apply
+                    </Button>
+                  </span>
+                </Tooltip>
+
+                <Button
+                  size="small"
+                  variant="text"
+                  color="inherit"
+                  onClick={() => setSelected(new Set())}
+                  sx={{ ml: 'auto' }}
+                >
+                  Deselect all
+                </Button>
+              </Toolbar>
+            </Paper>
+          </Collapse>
+
+          {/* Preview table */}
           <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 2 }}>
             <Table size="small">
               <TableHead>
                 <TableRow sx={{ '& th': { fontWeight: 600, bgcolor: 'grey.50' } }}>
+                  <TableCell padding="checkbox">
+                    <Checkbox
+                      size="small"
+                      checked={allSelected}
+                      indeterminate={someSelected}
+                      onChange={toggleAll}
+                    />
+                  </TableCell>
                   <TableCell>Date</TableCell>
                   <TableCell>Description</TableCell>
                   <TableCell>Type</TableCell>
@@ -225,9 +362,19 @@ export function ImportCsvClient({ accounts, categories }: Props) {
               </TableHead>
               <TableBody>
                 {rows.map((row, idx) => {
+                  const isSelected = selected.has(idx);
                   const chip = TYPE_CHIP[row.type] ?? { label: row.type, color: 'info' as const };
                   return (
-                    <TableRow key={idx} hover>
+                    <TableRow
+                      key={idx}
+                      hover
+                      selected={isSelected}
+                      onClick={() => toggleRow(idx)}
+                      sx={{ cursor: 'pointer' }}
+                    >
+                      <TableCell padding="checkbox" onClick={(e) => e.stopPropagation()}>
+                        <Checkbox size="small" checked={isSelected} onChange={() => toggleRow(idx)} />
+                      </TableCell>
                       <TableCell>
                         <Typography variant="body2" sx={{ whiteSpace: 'nowrap' }}>
                           {fmtDate(row.date)}
@@ -257,7 +404,7 @@ export function ImportCsvClient({ accounts, categories }: Props) {
                           {Math.abs(row.amount).toFixed(2)}
                         </Typography>
                       </TableCell>
-                      <TableCell>
+                      <TableCell onClick={(e) => e.stopPropagation()}>
                         <FormControl size="small" fullWidth>
                           <Select
                             displayEmpty
@@ -266,33 +413,13 @@ export function ImportCsvClient({ accounts, categories }: Props) {
                             renderValue={(val) => {
                               if (!val) return <Typography variant="body2" color="text.disabled">— none —</Typography>;
                               const cat = categories.find((c) => c.id === val);
-                              return (
-                                <div className="flex items-center gap-1">
-                                  {cat?.color && (
-                                    <span
-                                      className="inline-block w-2.5 h-2.5 rounded-full shrink-0"
-                                      style={{ backgroundColor: cat.color }}
-                                    />
-                                  )}
-                                  <Typography variant="body2">
-                                    {cat?.icon ? `${cat.icon} ` : ''}{cat?.name}
-                                  </Typography>
-                                </div>
-                              );
+                              return cat ? <CategoryChip cat={cat} /> : null;
                             }}
                           >
                             <MenuItem value=""><em>— none —</em></MenuItem>
                             {categories.map((cat) => (
                               <MenuItem key={cat.id} value={cat.id}>
-                                <div className="flex items-center gap-2">
-                                  {cat.color && (
-                                    <span
-                                      className="inline-block w-2.5 h-2.5 rounded-full shrink-0"
-                                      style={{ backgroundColor: cat.color }}
-                                    />
-                                  )}
-                                  {cat.icon ? `${cat.icon} ` : ''}{cat.name}
-                                </div>
+                                <CategoryChip cat={cat} />
                               </MenuItem>
                             ))}
                           </Select>

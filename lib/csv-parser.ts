@@ -6,18 +6,19 @@ import { parseLinePaypal } from './paypal-parser';
 export type CsvFormat = 'bank-austria' | 'paypal';
 
 export interface ParsedRow {
-  date: string;         // ISO date string YYYY-MM-DD
-  amount: number;       // positive = income, negative = expense
+  date: Date;           // ISO date string YYYY-MM-DD
+  amount: number;       // positive = INCOME, negative = EXPENSE
   type: 'INCOME' | 'EXPENSE' | 'TRANSFER';
   description: string;
   payeeName: string;
+  payeeEmail?: string;
 }
 
 type LineParseFn = (line: Record<string, string>) => ParsedRow | null;
 
 const parsers: Record<CsvFormat, LineParseFn> = {
   'bank-austria': parseLineBankAustria,
-  paypal:         parseLinePaypal,
+  paypal: parseLinePaypal,
 };
 
 export function parseCsvDataFrame(df: DataFrame, format: CsvFormat): ParsedRow[] {

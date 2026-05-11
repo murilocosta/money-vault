@@ -209,7 +209,7 @@ export function TransactionsTable({
                           sx={{ fontWeight: 600, whiteSpace: 'nowrap' }}
                           color={tx.type === 'INCOME' ? 'success.main' : tx.type === 'EXPENSE' ? 'error.main' : 'text.primary'}
                         >
-                          {tx.type === 'EXPENSE' ? '−' : tx.type === 'INCOME' ? '+' : ''}
+                          {tx.type === 'EXPENSE' ? '-' : tx.type === 'INCOME' ? '+' : ''}
                           {fmt(tx.amount, tx.account.currency)}
                         </Typography>
                       </TableCell>

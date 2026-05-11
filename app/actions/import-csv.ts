@@ -6,18 +6,20 @@ import { prisma } from '@/lib/db/prisma';
 import { requireUserId } from '@/lib/dal';
 import type { ActionResult } from '@/types';
 
+const BATCH_SIZE = 15;
+
 const ImportRowSchema = z.object({
-  date:        z.string().date(),
-  amount:      z.number(),
-  type:        z.enum(['INCOME', 'EXPENSE', 'TRANSFER']),
+  date: z.coerce.date(),
+  amount: z.number(),
+  type: z.enum(['INCOME', 'EXPENSE', 'TRANSFER']),
   description: z.string().min(1),
-  payeeName:   z.string().min(1),
-  categoryId:  z.string().optional(),
+  payeeName: z.string().min(1),
+  categoryId: z.string().optional(),
 });
 
 const ImportPayloadSchema = z.object({
   accountId: z.string().min(1, 'Account is required'),
-  rows:      z.array(ImportRowSchema).min(1, 'No rows to import'),
+  rows: z.array(ImportRowSchema).min(1, 'No rows to import'),
 });
 
 export type ImportRow = z.infer<typeof ImportRowSchema>;
@@ -39,32 +41,48 @@ export async function importCsvAction(
 
   let imported = 0;
 
-  await prisma.$transaction(async (tx) => {
-    for (const row of rows) {
-      // Upsert payee by name (unique per user)
-      const payee = await tx.payee.upsert({
-        where:  { userId_name: { userId, name: row.payeeName } },
-        update: {},
-        create: { userId, name: row.payeeName, type: 'OTHER' },
-      });
+  for (let i = 0; i < rows.length; i += BATCH_SIZE) {
+    const batch = rows.slice(i, i + BATCH_SIZE);
 
-      await tx.transaction.create({
-        data: {
+    await prisma.$transaction(async (tx) => {
+      // Upsert all unique payees in the batch with individual queries (required for upsert)
+      const uniquePayeeNames = [...new Set(batch.map((r) => r.payeeName))];
+      await Promise.all(
+        uniquePayeeNames.map((name) =>
+          tx.payee.upsert({
+            where: { userId_name: { userId, name } },
+            update: {},
+            create: { userId, name, type: 'OTHER' },
+          }),
+        ),
+      );
+
+      // Fetch the resolved payee IDs in one query
+      const payees = await tx.payee.findMany({
+        where: { userId, name: { in: uniquePayeeNames } },
+        select: { id: true, name: true },
+      });
+      const payeeMap = new Map(payees.map((p) => [p.name, p.id]));
+
+      await tx.transaction.createMany({
+        data: batch.map((row) => ({
           userId,
           accountId,
-          date:        new Date(row.date),
-          amount:      row.amount,
-          type:        row.type,
+          date: row.date,
+          amount: row.amount,
+          type: row.type,
           description: row.description,
-          payeeId:     payee.id,
-          categoryId:  row.categoryId ?? null,
-          isImported:  true,
-        },
+          payeeId: payeeMap.get(row.payeeName)!,
+          categoryId: row.categoryId ?? null,
+          isImported: true,
+        })),
       });
 
-      imported++;
-    }
-  });
+      imported += batch.length;
+    }, {
+      maxWait: 20000,
+    });
+  }
 
   revalidatePath('/dashboard/transactions');
   return { success: true, data: { imported } };
