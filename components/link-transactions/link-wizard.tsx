@@ -170,6 +170,8 @@ export function LinkWizard({
         <Step><StepLabel>Select source transaction</StepLabel></Step>
       </Stepper>
 
+      <br />
+
       {step === 0 && (
         <Step1
           accounts={creditCardAccounts}
@@ -320,9 +322,6 @@ function Step2({
   return (
     <Box>
       {/* Reference card */}
-      <Typography variant="subtitle2" className="mb-2" color="text.secondary">
-        Linking credit card transaction
-      </Typography>
       <Paper
         variant="outlined"
         className="mb-6 p-4 rounded-xl"
@@ -334,7 +333,7 @@ function Step2({
               {creditTx.description}
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              {creditTx.account.name} &middot; {new Date(creditTx.date).toLocaleDateString()}
+              {creditTx.account.name} &middot; {new Date(creditTx.date).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })}
               {creditTx.payee ? ` · ${creditTx.payee.name}` : ''}
             </Typography>
           </Box>

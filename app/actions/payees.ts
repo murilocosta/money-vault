@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
-import { createPayee, deletePayee, mergePayees, updatePayee } from '@/lib/services/payee.service';
+import { absorbPayees, createPayee, deletePayee, updatePayee } from '@/lib/services/payee.service';
 import { requireUserId } from '@/lib/dal';
 import type { ActionResult } from '@/types';
 
@@ -87,30 +87,33 @@ export async function deletePayeeAction(id: string): Promise<ActionResult> {
   return { success: true, data: undefined };
 }
 
-const MergePayeesSchema = z.object({
-  sourceIds: z.array(z.string().uuid()).min(2, 'Select at least two payees to merge'),
-  name: z.string().min(1, 'Unified name is required'),
-  type: z.enum(['PERSON', 'BUSINESS', 'INSTITUTION', 'OTHER']),
+const AbsorbPayeesSchema = z.object({
+  targetId: z.string().uuid('Invalid target payee'),
+  sourceIds: z.array(z.string().uuid()).min(1, 'Select at least one payee to absorb'),
 });
 
-export async function mergePayeesAction(payload: {
+export async function absorbPayeesAction(payload: {
+  targetId: string;
   sourceIds: string[];
-  name: string;
-  type: string;
-}): Promise<ActionResult<{ mergedId: string }>> {
+}): Promise<ActionResult<{ targetId: string }>> {
   const userId = await requireUserId();
 
-  const parsed = MergePayeesSchema.safeParse(payload);
+  const parsed = AbsorbPayeesSchema.safeParse(payload);
   if (!parsed.success) {
     return { success: false, error: parsed.error.issues[0].message };
   }
 
-  const { sourceIds, name, type } = parsed.data;
-  const merged = await mergePayees(userId, sourceIds, { name, type });
+  const { targetId, sourceIds } = parsed.data;
+
+  if (sourceIds.includes(targetId)) {
+    return { success: false, error: 'Target payee cannot also be a source' };
+  }
+
+  await absorbPayees(userId, targetId, sourceIds);
 
   revalidatePath('/dashboard/payees');
   revalidatePath('/dashboard/sync-payees');
   revalidatePath('/dashboard/transactions');
 
-  return { success: true, data: { mergedId: merged.id } };
+  return { success: true, data: { targetId } };
 }

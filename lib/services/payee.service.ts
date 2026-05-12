@@ -44,25 +44,20 @@ export function deletePayee(id: string, userId: string) {
   return prisma.payee.delete({ where: { id, userId } });
 }
 
-export async function mergePayees(
-  userId: string,
-  sourceIds: string[],
-  unified: { name: string; type: PayeeType },
-) {
+export async function absorbPayees(userId: string, targetId: string, sourceIds: string[]) {
   return prisma.$transaction(async (tx) => {
-    const merged = await tx.payee.create({
-      data: { name: unified.name, type: unified.type, userId },
-    });
+    const target = await tx.payee.findUnique({ where: { id: targetId, userId } });
+    if (!target) throw new Error('Target payee not found');
 
     await tx.transaction.updateMany({
       where: { payeeId: { in: sourceIds }, userId },
-      data: { payeeId: merged.id },
+      data: { payeeId: targetId },
     });
 
     await tx.payee.deleteMany({
       where: { id: { in: sourceIds }, userId },
     });
 
-    return merged;
+    return target;
   });
 }

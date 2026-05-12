@@ -10,6 +10,7 @@ import {
   Collapse,
   FormControl,
   InputLabel,
+  LinearProgress,
   MenuItem,
   Paper,
   Select,
@@ -32,7 +33,11 @@ import FilterListOffIcon from '@mui/icons-material/FilterListOff';
 import { readCSV } from 'danfojs';
 import type { CsvFormat, ParsedRow } from '@/lib/csv-parser';
 import { parseCsvDataFrame } from '@/lib/csv-parser';
-import { importCsvAction, type ImportRow } from '@/app/actions/import-csv';
+import {
+  importCsvBatchAction,
+  revalidateAfterImport,
+  type ImportRow,
+} from '@/app/actions/import-csv';
 
 interface SelectOption { id: string; name: string }
 interface CategoryOption extends SelectOption { icon: string | null; color: string | null }
@@ -56,6 +61,8 @@ const TYPE_CHIP: Record<string, { label: string; color: 'success' | 'error' | 'i
   EXPENSE: { label: 'Expense', color: 'error' },
   TRANSFER: { label: 'Transfer', color: 'info' },
 };
+
+const IMPORT_BATCH_SIZE = 10
 
 function fmtDate(iso: Date) {
   return iso.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
@@ -173,6 +180,7 @@ export function ImportCsvClient({ accounts, categories }: Props) {
   const [snackbar, setSnackbar] = useState<{ msg: string; severity: 'success' | 'error' } | null>(null);
   const [isParsing, startParse] = useTransition();
   const [isSaving, startSave] = useTransition();
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
 
   const [descFilter, setDescFilter] = useState('');
   const [payeeFilter, setPayeeFilter] = useState('');
@@ -293,27 +301,40 @@ export function ImportCsvClient({ accounts, categories }: Props) {
   function handleSave() {
     if (!accountId || rowMap.size === 0) return;
 
-    startSave(async () => {
-      const payload: { accountId: string; rows: ImportRow[] } = {
-        accountId,
-        rows: [...rowMap.values()].map((r) => ({
-          date: r.date,
-          amount: r.amount,
-          type: r.type,
-          description: r.description,
-          payeeName: r.payeeName,
-          categoryId: r.categoryId,
-        })),
-      };
+    const allRows: ImportRow[] = [...rowMap.values()].map((r) => ({
+      date: r.date,
+      amount: r.amount,
+      type: r.type,
+      description: r.description,
+      payeeName: r.payeeName,
+      categoryId: r.categoryId,
+    }));
 
-      const result = await importCsvAction(payload);
-      if (result.success) {
-        setSnackbar({ msg: `${result.data.imported} transaction(s) imported successfully.`, severity: 'success' });
-        setRowMap(new Map());
-        setSelected(new Set());
-      } else {
-        setSnackbar({ msg: result.error, severity: 'error' });
+    const total = allRows.length;
+    setProgress({ done: 0, total });
+
+    startSave(async () => {
+      let done = 0;
+
+      for (let i = 0; i < allRows.length; i += IMPORT_BATCH_SIZE) {
+        const batch = allRows.slice(i, i + IMPORT_BATCH_SIZE);
+        const result = await importCsvBatchAction({ accountId, batch });
+
+        if (!result.success) {
+          setProgress(null);
+          setSnackbar({ msg: result.error, severity: 'error' });
+          return;
+        }
+
+        done += result.data.imported;
+        setProgress({ done, total });
       }
+
+      await revalidateAfterImport();
+      setProgress(null);
+      setSnackbar({ msg: `${done} transaction(s) imported successfully.`, severity: 'success' });
+      setRowMap(new Map());
+      setSelected(new Set());
     });
   }
 
@@ -379,7 +400,7 @@ export function ImportCsvClient({ accounts, categories }: Props) {
             component="label"
             variant="outlined"
             startIcon={<UploadFileIcon />}
-            disabled={isParsing || !accountId}
+            disabled={isParsing || isSaving || !accountId}
             fullWidth
             sx={{ height: 40, alignSelf: 'center' }}
           >
@@ -409,9 +430,33 @@ export function ImportCsvClient({ accounts, categories }: Props) {
               disabled={isSaving || !accountId}
               size="small"
             >
-              {isSaving ? 'Saving…' : 'Confirm import'}
+              {progress
+                ? `${progress.done} / ${progress.total} saved…`
+                : 'Confirm import'}
             </Button>
           </div>
+
+          {/* Progress bar */}
+          {progress && (
+            <Paper variant="outlined" sx={{ borderRadius: 2, p: 2, mb: 3 }}>
+              <div className="flex items-center justify-between mb-1.5">
+                <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                  Importing…
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {progress.done} / {progress.total} rows
+                </Typography>
+              </div>
+              <LinearProgress
+                variant="determinate"
+                value={Math.round((progress.done / progress.total) * 100)}
+                sx={{ borderRadius: 1, height: 8 }}
+              />
+              <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                {Math.round((progress.done / progress.total) * 100)}% complete
+              </Typography>
+            </Paper>
+          )}
 
           {/* Filter bar */}
           <Box className="flex flex-wrap items-end gap-3 mb-3 p-4 rounded-xl border border-gray-200 bg-gray-50">
@@ -561,7 +606,9 @@ export function ImportCsvClient({ accounts, categories }: Props) {
               onClick={handleSave}
               disabled={isSaving || !accountId}
             >
-              {isSaving ? 'Saving…' : 'Confirm import'}
+              {progress
+                ? `${progress.done} / ${progress.total} saved…`
+                : 'Confirm import'}
             </Button>
           </Box>
         </>
